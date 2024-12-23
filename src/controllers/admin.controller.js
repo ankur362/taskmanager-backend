@@ -161,7 +161,7 @@ const getTasksForEvent = asyncHandler(async (req, res) => {
                 status: task.status,
                 proof: task.proof || "Not Done",
                 lastdate: task.lastdate,
-                assignedAttendees: user ? { fullName: user.fullName, email: user.email } : null, // Include user details if found
+                assignedAttendees: user ? { fullName: user.fullName, email: user.email,id:user._id } : null, // Include user details if found
             };
         })
     );
@@ -262,6 +262,7 @@ const assingnAttendeeForTask = asyncHandler(async (req, res) => {
     
     const taskexist = await Alltask.findById(taskid);
     console.log("gfgf");
+   
     
     if (!(taskexist)) {
         throw new ApiError(401, "Task does not exist")
@@ -272,13 +273,24 @@ const assingnAttendeeForTask = asyncHandler(async (req, res) => {
     }
     await User.findByIdAndUpdate(userid, { $push: { task: taskid } }, { new: true })
     await Alltask.findByIdAndUpdate(taskid, { assingnedAttendees: userid })
+    const {relatedEvent}=taskexist;
+    await Event.findByIdAndUpdate(
+       relatedEvent,
+       { $inc: { totalAttendees: 1 } },
+       { new: true } // Return the updated document
+     );
+
     return res.json(new ApiResponse(201, "attendee added to task successfully"))
 
 
 
 })
 const removeAttendeeFromTask = asyncHandler(async (req, res) => {
+    console.log("hello");
+    
     const { taskid, userid } = req.body;
+    console.log(taskid);
+    
 
     if (!(taskid && userid)) {
         throw new ApiError(400, "All fields are required");
@@ -301,7 +313,12 @@ const removeAttendeeFromTask = asyncHandler(async (req, res) => {
 
 
     await Alltask.findByIdAndUpdate(taskid, { assingnedAttendees: null }, { new: true });
-
+    const {relatedEvent}=taskExist;
+    await Event.findByIdAndUpdate(
+       relatedEvent,
+       { $inc: { totalAttendees: -1 } },
+       { new: true } // Return the updated document
+     );
     return res.json(new ApiResponse(200, null, "Attendee successfully removed from the task"));
 });
 const addattendee = asyncHandler(async (req, res) => {
@@ -403,7 +420,7 @@ const getAllAttendeesforevent = asyncHandler(async (req, res) => {
     }
 
 
-    const attendees = await User.find({ eventsAttending: eventId }).select("fullName email");
+    const attendees = await User.find({ eventsAttending: eventId }).select("fullName email task ");
 
     if (!attendees || attendees.length === 0) {
 
@@ -413,7 +430,7 @@ const getAllAttendeesforevent = asyncHandler(async (req, res) => {
     return res.json(new ApiResponse(201, { attendees }, "Attendees retrieved successfully."));
 });
 const getAllAttendees = asyncHandler(async (req, res) => {
-    const attendees = await User.find({}).select("fullName email coverImage");
+    const attendees = await User.find({}).select("fullName email coverImage task");
 
     if (!attendees || attendees.length === 0) {
 

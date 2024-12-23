@@ -77,6 +77,8 @@ const registerUser = asyncHandler(async (req, res) => {
     )
 })
 const login = asyncHandler(async (req, res) => {
+   
+    
     const { email, password } = req.body;
    console.log(password);
    
@@ -132,6 +134,7 @@ const logout = asyncHandler(async (req, res) => {
         );
    
 });
+
 const deleteattendee=asyncHandler(async(req,res)=>{
     const user =req.user
   
@@ -157,56 +160,108 @@ const deleteattendee=asyncHandler(async(req,res)=>{
     return res
     .json(new ApiResponse(201,"user Deleted successfully"))
 })
-const submitTask = asyncHandler(async (req, res) => {
-    const {taskid } = req.body; 
-    const user= req.user;
-   
-    
+const getProfile=asyncHandler(async(req,res)=>{
+    const user=req.user;
+    if(!user)
+    {
+        throw new ApiError(401,"user not found");
 
-  
-    if ( !taskid) {
-        throw new ApiError(400, "User ID and Task ID are required.");
     }
-
+    return res
+    .json(new ApiResponse(201,{user},"user fetched"))
+})
+const submitTask = asyncHandler(async (req, res) => {
+    const { taskid } = req.body;
+    console.log(taskid);
     
-    const task = await Alltask.findById(taskId);
+    const user = req.user; 
+console.log(user);
+
+   
+    if (!taskid) {
+        throw new ApiError(400, "Task ID is required.");
+    }
+    const task = await Alltask.findById(taskid);
+    console.log(task);
+    task.status = "completed";
     if (!task) {
         throw new ApiError(404, "Task not found.");
     }
-//proof
+
+    
+    if (!req.files || !req.files.proof || req.files.proof.length === 0) {
+        throw new ApiError(400, "Proof file is required.");
+    }
+
     const proofLocalPath = req.files.proof[0].path;
 
     
-    
-
-    if (!proofLocalPath) {
-        throw new ApiError(400, "cover image file is required")
+    const proof = await uploadOnCloudinary(proofLocalPath);
+    if (!proof || !proof.url) {
+        throw new ApiError(500, "Failed to upload proof file.");
     }
-    
-    
-    const proof = await uploadOnCloudinary(proofLocalPath)
-    if (!proof) {
-        throw new ApiError(400, "cover image file is required")
-    }
-  
-    
-    
 
-    if (user.tasksubmited.includes(taskId)) {
+    if (user.tasksubmited.includes(taskid)) {
         throw new ApiError(400, "Task has already been submitted.");
     }
 
-    
-    user.tasksubmited.push(taskId);
+   
+    user.tasksubmited.push(taskid);
     await user.save();
 
-    task.status = "completed"; 
+   
+    task.status = "completed";
     task.proof = proof.url;
     await task.save();
-    await Event.findByIdAndUpdate(relatedEvent,{$push:{taskCompleted:taskid}})
 
-    return res.json(new ApiResponse(200, { user, task }, "Task completed successfully."));
+    
+    await Event.findByIdAndUpdate(task.relatedEvent, {
+        $push: { taskCompleted: taskid },
+    });
+
+   
+    return res.json(
+        new ApiResponse(200, { user, task }, "Task completed successfully.")
+    );
 });
+
+
+const getAllTasksWithSubmissionStatus = asyncHandler(async (req, res) => {
+  
+    const user = req.user;
+
+    if (!user) {
+        throw new ApiError(401, "Unauthorized. User not found.");
+    }
+
+    try {
+       
+        const tasks = await Alltask.find(); 
+
+        if (!tasks || tasks.length === 0) {
+            return res.json(new ApiResponse(200, [], "No tasks found."));
+        }
+
+        
+        const tasksWithStatus = tasks.map((task) => {
+            const isSubmitted = user.tasksubmited.includes(task._id.toString()); 
+            return {
+                taskId: task._id,
+                title: task.title,
+                description: task.description,
+                status: isSubmitted ? "submitted" : "not submitted",
+            };
+        });
+
+        return res.json(new ApiResponse(200, tasksWithStatus, "Tasks fetched successfully."));
+    } catch (error) {
+        console.error("Error fetching tasks:", error);
+        throw new ApiError(500, "Internal Server Error. Could not fetch tasks.");
+    }
+});
+
+
+
 
     
 
@@ -219,4 +274,6 @@ export{registerUser,
     login,
     logout,
     deleteattendee,
-    submitTask}
+    submitTask
+,getAllTasksWithSubmissionStatus,
+getProfile}
