@@ -135,36 +135,40 @@ const getEventsForCalendar = asyncHandler(async (req, res) => {
 
 
 const getTasksForEvent = asyncHandler(async (req, res) => {
-    const { eventId } = req.body;  // Get the event ID from the body
+    const { eventId } = req.body; // Get the event ID from the body
 
+    // Find the event
     const event = await Event.findById(eventId);
-    console.log(event);
 
     if (!event) {
         return res.status(404).json(new ApiResponse(404, "Event not found"));
     }
 
+    // Find tasks related to the event
     const tasks = await Alltask.find({ relatedEvent: eventId }).sort({ lastdate: 1 });
 
     if (!tasks || tasks.length === 0) {
         return res.status(200).json(new ApiResponse(200, "No tasks found for this event"));
     }
 
-    const formattedTasks = tasks.map(task => ({
-        taskId: task._id,  // Include taskId in the formatted task
-        agenda: task.agenda,
-        status: task.status,
-        proof: task.proof || "Not Done",
-        lastdate: task.lastdate,
-        assignedAttendees: task.assingnedAttendees && task.assingnedAttendees.length > 0
-            ? task.assingnedAttendees
-            : null,
-    }));
-
-    console.log(formattedTasks);
+    // Map tasks to formattedTasks using Promise.all
+    const formattedTasks = await Promise.all(
+        tasks.map(async (task) => {
+            const user = await User.findById(task.assingnedAttendees); // Fetch assigned user
+            return {
+                taskId: task._id, // Include taskId in the formatted task
+                agenda: task.agenda,
+                status: task.status,
+                proof: task.proof || "Not Done",
+                lastdate: task.lastdate,
+                assignedAttendees: user ? { fullName: user.fullName, email: user.email } : null, // Include user details if found
+            };
+        })
+    );
 
     return res.json(new ApiResponse(200, { formattedTasks }, "Tasks found"));
 });
+
 
 const createTask = asyncHandler(async (req, res) => {
     const { eventid, agenda, lastdate } = req.body;
